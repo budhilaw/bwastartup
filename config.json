@@ -1,0 +1,16 @@
+{
+  "debug": true,
+  "server": {
+    "address": ":9090"
+  },
+  "database": {
+    "host": "localhost",
+    "port": "3306",
+    "user": "root",
+    "pass": "1550",
+    "name": "bwastartup"
+  },
+  "secret": {
+    "key": "d1889de1f5ef88ed1910f0935ab1586a67a611328aa7f75b25bd1fa3186af64b"
+  }
+}
