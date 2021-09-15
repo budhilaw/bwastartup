@@ -56,14 +56,9 @@ func main() {
 	userHandler := handler.NewUserHandler(userService, authService)
 
 	campaignRepository := campaign.NewRepository(dbConn)
+	campaignService := campaign.NewService(campaignRepository)
 
-	campaigns, err := campaignRepository.FindByUserID(1)
-	if err != nil {
-		log.Panic(err)
-	}
-	for _, campaign := range campaigns {
-		fmt.Println(campaign.CampaignImages[0].FileName)
-	}
+	fmt.Println(campaignService.FindCampaigns(1))
 
 	router := gin.Default()
 	api := router.Group("/api/v1")
