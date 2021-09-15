@@ -2,6 +2,7 @@ package main
 
 import (
 	"belajar-bwa/auth"
+	"belajar-bwa/campaign"
 	"belajar-bwa/handler"
 	"belajar-bwa/helper"
 	"belajar-bwa/user"
@@ -53,6 +54,16 @@ func main() {
 	userService := user.NewService(userRepository)
 	authService := auth.NewService()
 	userHandler := handler.NewUserHandler(userService, authService)
+
+	campaignRepository := campaign.NewRepository(dbConn)
+
+	campaigns, err := campaignRepository.FindByUserID(1)
+	if err != nil {
+		log.Panic(err)
+	}
+	for _, campaign := range campaigns {
+		fmt.Println(campaign.CampaignImages[0].FileName)
+	}
 
 	router := gin.Default()
 	api := router.Group("/api/v1")
