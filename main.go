@@ -5,6 +5,7 @@ import (
 	"belajar-bwa/campaign"
 	"belajar-bwa/handler"
 	"belajar-bwa/helper"
+	"belajar-bwa/payment"
 	"belajar-bwa/transaction"
 	"belajar-bwa/user"
 	"fmt"
@@ -26,7 +27,8 @@ func init() {
 	}
 
 	if viper.GetBool(`debug`) {
-		log.Println("Service RUN on DEBUG mode")
+		gin.SetMode(gin.DebugMode)
+		log.Println("[DEBUG] Service RUN on DEBUG mode")
 	}
 }
 
@@ -60,8 +62,10 @@ func main() {
 	campaignService := campaign.NewService(campaignRepository)
 	campaignHandler := handler.NewCampaignHandler(campaignService)
 
+	paymentService := payment.NewService()
+
 	transactionRepository := transaction.NewRepository(dbConn)
-	transactionService := transaction.NewService(transactionRepository, campaignRepository)
+	transactionService := transaction.NewService(transactionRepository, campaignRepository, paymentService)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
 	router := gin.Default()
@@ -81,8 +85,9 @@ func main() {
 
 	api.GET("/campaigns/:id/transactions", authMiddleware(authService, userService), transactionHandler.GetCampaignTransactions)
 	api.GET("/transactions", authMiddleware(authService, userService), transactionHandler.GetUserTransactions)
+	api.POST("/transactions", authMiddleware(authService, userService), transactionHandler.CreateTransaction)
 
-	router.Run()
+	router.Run(viper.GetString("server.address"))
 }
 
 func authMiddleware(authService auth.Service, userService user.Service) gin.HandlerFunc {
