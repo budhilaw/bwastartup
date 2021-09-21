@@ -29,7 +29,7 @@ func init() {
 
 	if viper.GetBool(`debug`) {
 		gin.SetMode(gin.DebugMode)
-		log.Println("[DEBUG] Service RUN on DEBUG mode")
+		log.Println("Service RUN on DEBUG mode")
 	}
 }
 
