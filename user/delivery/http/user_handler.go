@@ -1,25 +1,65 @@
-package handler
+package http
 
 import (
-	"belajar-bwa/auth"
+	"belajar-bwa/domain"
 	"belajar-bwa/helper"
-	"belajar-bwa/user"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
+
+	_middleware "belajar-bwa/user/delivery/http/middleware"
 )
 
-type userHandler struct {
-	userService user.Service
-	authService auth.Service
+type RegisterUserInput struct {
+	Name       string `json:"name" binding:"required"`
+	Occupation string `json:"occupation" binding:"required"`
+	Email      string `json:"email" binding:"required,email"`
+	Password   string `json:"password" binding:"required"`
 }
 
-func NewUserHandler(userService user.Service, authService auth.Service) *userHandler {
-	return &userHandler{userService, authService}
+type UserFormatter struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Occupation string `json:"occupation"`
+	Email      string `json:"email"`
+	Token      string `json:"token"`
+	ImageURL   string `json:"image_url"`
 }
 
-func (h *userHandler) RegisterUser(c *gin.Context) {
-	var input user.RegisterUserInput
+type UserHandler struct {
+	UserUsecase domain.UserUsecase
+	AuthUsecase domain.JWTService
+}
+
+func NewUserHandler(c *gin.RouterGroup, uu domain.UserUsecase, au domain.JWTService) {
+	handler := &UserHandler{
+		UserUsecase: uu,
+		AuthUsecase: au,
+	}
+
+	newMiddleware := _middleware.NewUserMiddleware(au, uu)
+
+	c.POST("/users", handler.RegisterUser)
+	c.POST("/sessions", handler.Login)
+	c.POST("/email_checkers", handler.CheckEmailAvailability)
+	c.POST("/avatars", newMiddleware.Auth(), handler.UploadAvatar)
+	c.GET("/users/fetch", newMiddleware.Auth(), handler.FetchUser)
+}
+
+func FormatUser(user domain.User, token string) UserFormatter {
+	format := UserFormatter{
+		ID:         user.ID,
+		Name:       user.Name,
+		Occupation: user.Occupation,
+		Email:      user.Email,
+		Token:      token,
+		ImageURL:   user.AvatarFilename,
+	}
+	return format
+}
+
+func (h *UserHandler) RegisterUser(c *gin.Context) {
+	var input domain.RegisterUserInput
 
 	err := c.ShouldBindJSON(&input)
 	if err != nil {
@@ -31,28 +71,28 @@ func (h *userHandler) RegisterUser(c *gin.Context) {
 		return
 	}
 
-	newUser, err := h.userService.RegisterUser(input)
+	newUser, err := h.UserUsecase.RegisterUser(input)
 	if err != nil {
 		response := helper.APIResponse("Register account failed", http.StatusUnprocessableEntity, "error", nil)
 		c.JSON(http.StatusUnprocessableEntity, response)
 		return
 	}
 
-	token, err := h.authService.GenerateToken(newUser.ID)
+	token, err := h.AuthUsecase.GenerateToken(newUser.ID)
 	if err != nil {
 		response := helper.APIResponse("Register account failed", http.StatusUnprocessableEntity, "error", nil)
 		c.JSON(http.StatusUnprocessableEntity, response)
 		return
 	}
 
-	formatter := user.FormatUser(newUser, token)
+	formatter := FormatUser(newUser, token)
 	response := helper.APIResponse("Account has been registered", http.StatusOK, "success", formatter)
 
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *userHandler) Login(c *gin.Context) {
-	var input user.LoginInput
+func (h *UserHandler) Login(c *gin.Context) {
+	var input domain.LoginInput
 
 	err := c.ShouldBindJSON(&input)
 	if err != nil {
@@ -64,7 +104,7 @@ func (h *userHandler) Login(c *gin.Context) {
 		return
 	}
 
-	loggedin, err := h.userService.Login(input)
+	loggedin, err := h.UserUsecase.Login(input)
 	if err != nil {
 		errorMessage := gin.H{"errors": err.Error()}
 
@@ -73,21 +113,21 @@ func (h *userHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.authService.GenerateToken(loggedin.ID)
+	token, err := h.AuthUsecase.GenerateToken(loggedin.ID)
 	if err != nil {
 		response := helper.APIResponse("Login failed", http.StatusUnprocessableEntity, "error", nil)
 		c.JSON(http.StatusUnprocessableEntity, response)
 		return
 	}
 
-	formatter := user.FormatUser(loggedin, token)
+	formatter := FormatUser(loggedin, token)
 	response := helper.APIResponse("Successfuly loggedin", http.StatusOK, "success", formatter)
 
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *userHandler) CheckEmailAvailability(c *gin.Context) {
-	var input user.CheckEmailInput
+func (h *UserHandler) CheckEmailAvailability(c *gin.Context) {
+	var input domain.CheckEmailInput
 
 	err := c.ShouldBindJSON(&input)
 	if err != nil {
@@ -99,7 +139,7 @@ func (h *userHandler) CheckEmailAvailability(c *gin.Context) {
 		return
 	}
 
-	isEmailAvailable, err := h.userService.IsEmailAvailable(input)
+	isEmailAvailable, err := h.UserUsecase.IsEmailAvailable(input)
 	if err != nil {
 		errorMessage := gin.H{"errors": "Server error"}
 		response := helper.APIResponse("Email checking failed", http.StatusUnprocessableEntity, "error", errorMessage)
@@ -121,15 +161,16 @@ func (h *userHandler) CheckEmailAvailability(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *userHandler) UploadAvatar(c *gin.Context) {
+func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	file, err := c.FormFile("avatar")
 	if err != nil {
 		data := gin.H{"is_uploaded": false}
 		response := helper.APIResponse("Failed to avatar image", http.StatusBadRequest, "error", data)
 		c.JSON(http.StatusBadRequest, response)
+		return
 	}
 
-	currentUser := c.MustGet("currentUser").(user.User)
+	currentUser := c.MustGet("currentUser").(domain.User)
 	userID := currentUser.ID
 	path := fmt.Sprintf("images/%d-%s", userID, file.Filename)
 
@@ -138,13 +179,15 @@ func (h *userHandler) UploadAvatar(c *gin.Context) {
 		data := gin.H{"is_uploaded": false}
 		response := helper.APIResponse("Failed to avatar image", http.StatusBadRequest, "error", data)
 		c.JSON(http.StatusBadRequest, response)
+		return
 	}
 
-	_, err = h.userService.SaveAvatar(userID, path)
+	_, err = h.UserUsecase.SaveAvatar(userID, path)
 	if err != nil {
 		data := gin.H{"is_uploaded": false}
 		response := helper.APIResponse("Failed to avatar image", http.StatusBadRequest, "error", data)
 		c.JSON(http.StatusBadRequest, response)
+		return
 	}
 
 	data := gin.H{"is_uploaded": true}
@@ -152,10 +195,10 @@ func (h *userHandler) UploadAvatar(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *userHandler) FetchUser(c *gin.Context) {
-	currentUser := c.MustGet("currentUser").(user.User)
+func (h *UserHandler) FetchUser(c *gin.Context) {
+	currentUser := c.MustGet("currentUser").(domain.User)
 
-	formatter := user.FormatUser(currentUser, "")
+	formatter := FormatUser(currentUser, "")
 
 	response := helper.APIResponse("Successfuly fetch user data", http.StatusOK, "success", formatter)
 

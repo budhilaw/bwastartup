@@ -1,23 +1,33 @@
-package handler
+package http
 
 import (
+	"belajar-bwa/domain"
 	"belajar-bwa/helper"
 	"belajar-bwa/transaction"
-	"belajar-bwa/user"
+	_middleware "belajar-bwa/user/delivery/http/middleware"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
-type transactionHandler struct {
-	service transaction.Service
+type TransactionHandler struct {
+	transactionUsecase domain.TransactionUsecase
+	UserUsecase        domain.UserUsecase
+	AuthUsecase        domain.JWTService
 }
 
-func NewTransactionHandler(service transaction.Service) *transactionHandler {
-	return &transactionHandler{service}
+func NewTransactionHandler(c *gin.RouterGroup, tu domain.TransactionUsecase, uu domain.UserUsecase, au domain.JWTService) {
+	handler := &TransactionHandler{transactionUsecase: tu, AuthUsecase: au, UserUsecase: uu}
+
+	newMiddleware := _middleware.NewUserMiddleware(au, uu)
+
+	c.GET("/campaigns/:id/transactions", newMiddleware.Auth(), handler.GetCampaignTransactions)
+	c.GET("/transactions", newMiddleware.Auth(), handler.GetUserTransactions)
+	c.POST("/transactions", newMiddleware.Auth(), handler.CreateTransaction)
+	c.POST("/transactions/notifications", handler.GetNotification)
 }
 
-func (h *transactionHandler) GetCampaignTransactions(c *gin.Context) {
-	var input transaction.GetCampaignTransactionsInput
+func (h *TransactionHandler) GetCampaignTransactions(c *gin.Context) {
+	var input domain.GetCampaignTransactionsInput
 
 	err := c.ShouldBindUri(&input)
 	if err != nil {
@@ -26,11 +36,11 @@ func (h *transactionHandler) GetCampaignTransactions(c *gin.Context) {
 		return
 	}
 
-	currentUser := c.MustGet("currentUser").(user.User)
+	currentUser := c.MustGet("currentUser").(domain.User)
 
 	input.User = currentUser
 
-	transactions, err := h.service.GetTransactionsByCampaignID(input)
+	transactions, err := h.transactionUsecase.GetTransactionsByCampaignID(input)
 	if err != nil {
 		errors := err.Error()
 		errorMessage := gin.H{"errors": errors}
@@ -44,11 +54,11 @@ func (h *transactionHandler) GetCampaignTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *transactionHandler) GetUserTransactions(c *gin.Context) {
-	currentUser := c.MustGet("currentUser").(user.User)
+func (h *TransactionHandler) GetUserTransactions(c *gin.Context) {
+	currentUser := c.MustGet("currentUser").(domain.User)
 	userID := currentUser.ID
 
-	transactions, err := h.service.GetTransactionsByUserID(userID)
+	transactions, err := h.transactionUsecase.GetTransactionsByUserID(userID)
 	if err != nil {
 		response := helper.APIResponse("Error to get user's transactions", http.StatusBadRequest, "error", nil)
 		c.JSON(http.StatusBadRequest, response)
@@ -59,8 +69,8 @@ func (h *transactionHandler) GetUserTransactions(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (h *transactionHandler) CreateTransaction(c *gin.Context) {
-	var input transaction.CreateTransactionInput
+func (h *TransactionHandler) CreateTransaction(c *gin.Context) {
+	var input domain.CreateTransactionInput
 
 	err := c.ShouldBindJSON(&input)
 	if err != nil {
@@ -72,10 +82,10 @@ func (h *transactionHandler) CreateTransaction(c *gin.Context) {
 		return
 	}
 
-	currentUser := c.MustGet("currentUser").(user.User)
+	currentUser := c.MustGet("currentUser").(domain.User)
 	input.User = currentUser
 
-	newTransaction, err := h.service.CreateTransaction(input)
+	newTransaction, err := h.transactionUsecase.CreateTransaction(input)
 	if err != nil {
 		response := helper.APIResponse("Error to create transactions", http.StatusBadRequest, "error", nil)
 		c.JSON(http.StatusBadRequest, response)
@@ -86,8 +96,8 @@ func (h *transactionHandler) CreateTransaction(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-func (h transactionHandler) GetNotification(c *gin.Context) {
-	var input transaction.TransactionNotificationInput
+func (h TransactionHandler) GetNotification(c *gin.Context) {
+	var input domain.TransactionNotificationInput
 
 	err := c.ShouldBindJSON(&input)
 	if err != nil {
@@ -96,7 +106,7 @@ func (h transactionHandler) GetNotification(c *gin.Context) {
 		return
 	}
 
-	err = h.service.ProcessPayment(input)
+	err = h.transactionUsecase.ProcessPayment(input)
 	if err != nil {
 		response := helper.APIResponse("Failed to process notification", http.StatusBadRequest, "error", nil)
 		c.JSON(http.StatusBadRequest, response)

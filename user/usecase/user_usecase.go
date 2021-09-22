@@ -1,28 +1,21 @@
-package user
+package usecase
 
 import (
+	"belajar-bwa/domain"
 	"errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type Service interface {
-	RegisterUser(input RegisterUserInput) (User, error)
-	Login(input LoginInput) (User, error)
-	IsEmailAvailable(input CheckEmailInput) (bool, error)
-	SaveAvatar(ID int, fileLocation string) (User, error)
-	GetUserByID(ID int) (User, error)
+type userUsecase struct {
+	userRepo domain.UserRepository
 }
 
-type service struct {
-	repository Repository
+func NewUserCase(ur domain.UserRepository) domain.UserUsecase {
+	return &userUsecase{userRepo: ur}
 }
 
-func NewService(repository *repository) *service {
-	return &service{repository}
-}
-
-func (s *service) RegisterUser(input RegisterUserInput) (User, error) {
-	user := User{}
+func (s *userUsecase) RegisterUser(input domain.RegisterUserInput) (domain.User, error) {
+	user := domain.User{}
 	user.Name = input.Name
 	user.Email = input.Email
 	user.Occupation = input.Occupation
@@ -33,7 +26,7 @@ func (s *service) RegisterUser(input RegisterUserInput) (User, error) {
 	user.PasswordHash = string(passHash)
 	user.Role = "user"
 
-	newUser, err := s.repository.Save(user)
+	newUser, err := s.userRepo.Save(user)
 	if err != nil {
 		return newUser, err
 	}
@@ -41,11 +34,11 @@ func (s *service) RegisterUser(input RegisterUserInput) (User, error) {
 	return newUser, nil
 }
 
-func (s *service) Login(input LoginInput) (User, error) {
+func (s *userUsecase) Login(input domain.LoginInput) (domain.User, error) {
 	email := input.Email
 	password := input.Password
 
-	user, err := s.repository.FindByEmail(email)
+	user, err := s.userRepo.FindByEmail(email)
 	if err != nil {
 		return user, err
 	}
@@ -62,10 +55,10 @@ func (s *service) Login(input LoginInput) (User, error) {
 	return user, nil
 }
 
-func (s *service) IsEmailAvailable(input CheckEmailInput) (bool, error) {
+func (s *userUsecase) IsEmailAvailable(input domain.CheckEmailInput) (bool, error) {
 	email := input.Email
 
-	user, err := s.repository.FindByEmail(email)
+	user, err := s.userRepo.FindByEmail(email)
 	if err != nil {
 		return false, err
 	}
@@ -77,15 +70,15 @@ func (s *service) IsEmailAvailable(input CheckEmailInput) (bool, error) {
 	return false, nil
 }
 
-func (s *service) SaveAvatar(ID int, fileLocation string) (User, error) {
-	user, err := s.repository.FindByID(ID)
+func (s *userUsecase) SaveAvatar(ID int, fileLocation string) (domain.User, error) {
+	user, err := s.userRepo.FindByID(ID)
 	if err != nil {
 		return user, err
 	}
 
 	user.AvatarFilename = fileLocation
 
-	updatedUser, err := s.repository.Update(user)
+	updatedUser, err := s.userRepo.Update(user)
 	if err != nil {
 		return updatedUser, err
 	}
@@ -93,8 +86,8 @@ func (s *service) SaveAvatar(ID int, fileLocation string) (User, error) {
 	return updatedUser, nil
 }
 
-func (s *service) GetUserByID(ID int) (User, error) {
-	user, err := s.repository.FindByID(ID)
+func (s *userUsecase) GetUserByID(ID int) (domain.User, error) {
+	user, err := s.userRepo.FindByID(ID)
 	if err != nil {
 		return user, err
 	}

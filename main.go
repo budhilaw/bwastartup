@@ -1,23 +1,29 @@
 package main
 
 import (
-	"belajar-bwa/auth"
-	"belajar-bwa/campaign"
-	"belajar-bwa/handler"
-	"belajar-bwa/helper"
-	"belajar-bwa/payment"
-	"belajar-bwa/transaction"
-	"belajar-bwa/user"
 	"fmt"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"log"
-	"net/http"
-	"strings"
+
+	_authUsecase "belajar-bwa/auth/usecase"
+
+	_userHandler "belajar-bwa/user/delivery/http"
+	_userRepo "belajar-bwa/user/repository/mysql"
+	_userUcase "belajar-bwa/user/usecase"
+
+	_campaignHandler "belajar-bwa/campaign/delivery/http"
+	_campaignRepo "belajar-bwa/campaign/repository/mysql"
+	_campaignUsecase "belajar-bwa/campaign/usecase"
+
+	_midtransUsecase "belajar-bwa/payment/usecase"
+
+	_transactionHandler "belajar-bwa/transaction/delivery/http"
+	_transactionRepo "belajar-bwa/transaction/repository/mysql"
+	_transactionUsecase "belajar-bwa/transaction/usecase"
 )
 
 func init() {
@@ -54,84 +60,27 @@ func main() {
 		sqlDB.Close()
 	}()
 
-	userRepository := user.NewRepository(dbConn)
-	userService := user.NewService(userRepository)
-	authService := auth.NewService()
-	userHandler := handler.NewUserHandler(userService, authService)
-
-	campaignRepository := campaign.NewRepository(dbConn)
-	campaignService := campaign.NewService(campaignRepository)
-	campaignHandler := handler.NewCampaignHandler(campaignService)
-
-	paymentService := payment.NewService()
-
-	transactionRepository := transaction.NewRepository(dbConn)
-	transactionService := transaction.NewService(transactionRepository, campaignRepository, paymentService)
-	transactionHandler := handler.NewTransactionHandler(transactionService)
-
 	router := gin.Default()
 	router.Use(cors.Default())
 	router.Static("/images", "./images")
 	api := router.Group("/api/v1")
 
-	api.POST("/users", userHandler.RegisterUser)
-	api.POST("/sessions", userHandler.Login)
-	api.POST("/email_checkers", userHandler.CheckEmailAvailability)
-	api.POST("/avatars", authMiddleware(authService, userService), userHandler.UploadAvatar)
-	api.GET("/users/fetch", authMiddleware(authService, userService), userHandler.FetchUser)
+	// Users
+	authUsecase := _authUsecase.NewAuthUsecase()
+	userRepository := _userRepo.NewMysqlUserRepository(dbConn)
+	userUsecase := _userUcase.NewUserCase(userRepository)
+	_userHandler.NewUserHandler(api, userUsecase, authUsecase)
 
-	api.GET("/campaigns", campaignHandler.GetCampaigns)
-	api.GET("/campaigns/:id", campaignHandler.GetCampaign)
-	api.POST("/campaigns", authMiddleware(authService, userService), campaignHandler.CreateCampaign)
-	api.PUT("/campaigns/:id", authMiddleware(authService, userService), campaignHandler.UpdateCampaign)
-	api.POST("/campaign-images", authMiddleware(authService, userService), campaignHandler.UploadImage)
+	// Campaign
+	campaignRepository := _campaignRepo.NewCampaignRepository(dbConn)
+	campaignService := _campaignUsecase.NewCampaignUsecase(campaignRepository)
+	_campaignHandler.NewCampaignHandler(api, campaignService, userUsecase, authUsecase)
 
-	api.GET("/campaigns/:id/transactions", authMiddleware(authService, userService), transactionHandler.GetCampaignTransactions)
-	api.GET("/transactions", authMiddleware(authService, userService), transactionHandler.GetUserTransactions)
-	api.POST("/transactions", authMiddleware(authService, userService), transactionHandler.CreateTransaction)
-	api.POST("/transactions/notifications", transactionHandler.GetNotification)
+	paymentService := _midtransUsecase.NewMidtransUsecase()
+
+	transactionRepository := _transactionRepo.NewTransactionRepository(dbConn)
+	transactionService := _transactionUsecase.NewTransactionUsecase(transactionRepository, campaignRepository, paymentService)
+	_transactionHandler.NewTransactionHandler(api, transactionService, userUsecase, authUsecase)
 
 	router.Run(viper.GetString("server.address"))
-}
-
-func authMiddleware(authService auth.Service, userService user.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if !strings.Contains(authHeader, "Bearer") {
-			response := helper.APIResponse("Unauthorized", http.StatusUnauthorized, "error", nil)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, response)
-			return
-		}
-
-		TokenString := ""
-		arrayToken := strings.Split(authHeader, " ")
-		if len(arrayToken) == 2 {
-			TokenString = arrayToken[1]
-		}
-
-		token, err := authService.ValidateToken(TokenString)
-		if err != nil {
-			response := helper.APIResponse("Unauthorized", http.StatusUnauthorized, "error", nil)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, response)
-			return
-		}
-
-		claim, ok := token.Claims.(jwt.MapClaims)
-		if !ok || !token.Valid {
-			response := helper.APIResponse("Unauthorized", http.StatusUnauthorized, "error", nil)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, response)
-			return
-		}
-
-		userID := int(claim["user_id"].(float64))
-
-		user, err := userService.GetUserByID(userID)
-		if err != nil {
-			response := helper.APIResponse("Unauthorized", http.StatusUnauthorized, "error", nil)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, response)
-			return
-		}
-
-		c.Set("currentUser", user)
-	}
 }

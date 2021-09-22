@@ -1,6 +1,9 @@
 package transaction
 
-import "time"
+import (
+	"belajar-bwa/domain"
+	"time"
+)
 
 type CampaignTransactionFormatter struct {
 	ID        int       `json:"id"`
@@ -9,7 +12,7 @@ type CampaignTransactionFormatter struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func FormatCampaignTransaction(transaction Transaction) CampaignTransactionFormatter {
+func FormatCampaignTransaction(transaction domain.Transaction) CampaignTransactionFormatter {
 	formatter := CampaignTransactionFormatter{}
 	formatter.ID = transaction.ID
 	formatter.Name = transaction.User.Name
@@ -18,7 +21,7 @@ func FormatCampaignTransaction(transaction Transaction) CampaignTransactionForma
 	return formatter
 }
 
-func FormatCampaignTransactions(transactions []Transaction) []CampaignTransactionFormatter {
+func FormatCampaignTransactions(transactions []domain.Transaction) []CampaignTransactionFormatter {
 	if len(transactions) == 0 {
 		return []CampaignTransactionFormatter{}
 	}
@@ -46,7 +49,7 @@ type CampaignFormatter struct {
 	ImageURL string `json:"image_url"`
 }
 
-func FormatUserTransaction(transaction Transaction) UserTransactionFormatter {
+func FormatUserTransaction(transaction domain.Transaction) UserTransactionFormatter {
 	formatter := UserTransactionFormatter{}
 	formatter.ID = transaction.ID
 	formatter.Amount = transaction.Amount
@@ -65,7 +68,7 @@ func FormatUserTransaction(transaction Transaction) UserTransactionFormatter {
 	return formatter
 }
 
-func FormatUserTransactions(transactions []Transaction) []UserTransactionFormatter {
+func FormatUserTransactions(transactions []domain.Transaction) []UserTransactionFormatter {
 	if len(transactions) == 0 {
 		return []UserTransactionFormatter{}
 	}
@@ -90,7 +93,7 @@ type TransactionFormatter struct {
 	PaymentURL string `json:"payment_url"`
 }
 
-func FormatTransaction(transaction Transaction) TransactionFormatter {
+func FormatTransaction(transaction domain.Transaction) TransactionFormatter {
 	formatter := TransactionFormatter{}
 	formatter.ID = transaction.ID
 	formatter.CampaignID = transaction.CampaignID
